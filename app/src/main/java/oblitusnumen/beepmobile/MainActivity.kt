@@ -1,5 +1,6 @@
 package oblitusnumen.beepmobile
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Build
@@ -29,8 +30,6 @@ import oblitusnumen.beepmobile.ui.theme.BeepMobileTheme
 import java.net.URI
 import java.time.format.DateTimeFormatter
 import java.util.*
-import android.Manifest
-import org.json.JSONObject
 
 
 class MainActivity : ComponentActivity() {

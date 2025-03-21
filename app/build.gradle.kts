@@ -58,6 +58,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
+    implementation("org.slf4j:slf4j-api:2.0.7")
+    implementation("org.slf4j:slf4j-simple:2.0.7")
     implementation("androidx.core:core-ktx:1.9.0") // For NotificationManager and other utilities
     implementation("androidx.compose.material3:material3:1.0.0") // For Compose material components
     implementation("org.java-websocket:Java-WebSocket:1.5.3") // WebSocket library

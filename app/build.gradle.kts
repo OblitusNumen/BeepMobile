@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "oblitusnumen.beepmobile"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -19,8 +19,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -54,6 +58,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
-    // WebView (Android)
-    implementation("androidx.webkit:webkit:1.13.0")
+    implementation("androidx.core:core-ktx:1.9.0") // For NotificationManager and other utilities
+    implementation("androidx.compose.material3:material3:1.0.0") // For Compose material components
+    implementation("org.java-websocket:Java-WebSocket:1.5.3") // WebSocket library
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2") // Coroutines for lifecycle-aware WebSocket handling
 }

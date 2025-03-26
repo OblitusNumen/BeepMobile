@@ -1,7 +1,6 @@
 package oblitusnumen.beepmobile.ui
 
 import android.content.Context
-import android.media.MediaPlayer
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -9,26 +8,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import oblitusnumen.beepmobile.MainActivity
-import oblitusnumen.beepmobile.impl.MyWebSocketClient
-import oblitusnumen.beepmobile.impl.playSound
-import oblitusnumen.beepmobile.impl.sendNotification
+import androidx.lifecycle.viewmodel.compose.viewModel
+import oblitusnumen.beepmobile.impl.WebSocketService
+import oblitusnumen.beepmobile.impl.getUsername
 import org.json.JSONObject
-import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.util.*
 
 @Composable
 fun WebSocketUI(
     context: Context,
-    mediaPlayer: MediaPlayer,
-    webSocketClient: MyWebSocketClient,
-    connected: MutableState<Boolean>
+    service: WebSocketService,
+    stopService: () -> Unit,
+    viewModel: BeepViewModel = viewModel()
 ) {
+    val messages by viewModel.receivedMessages.collectAsState()
+    val users by viewModel.users.collectAsState()
     var message by remember { mutableStateOf("") }
-    var receivedMessages by remember { mutableStateOf(listOf<String>()) }
-    val users = remember { mutableStateMapOf<UUID, String>() }
 
     LazyColumn(
         modifier = Modifier
@@ -37,60 +31,6 @@ fun WebSocketUI(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            if (webSocketClient.messages.isNotEmpty()) {
-                for (msg in webSocketClient.messages) {
-                    val jsonObject = JSONObject(msg)
-                    when (jsonObject.getString("type")) {
-                        "sound" -> {
-                            if (UUID.fromString(jsonObject.getString("user_id")) != webSocketClient.uuid) {
-                                sendNotification(context, users[UUID.fromString(jsonObject.getString("user_id"))])
-                                playSound(mediaPlayer)
-                            }
-                            receivedMessages =
-                                receivedMessages + ("[${
-                                    LocalDateTime.ofInstant(
-                                        Instant.ofEpochSecond(
-                                            jsonObject.getString("timestamp").toLong() / 1000
-                                        ), ZoneId.systemDefault()
-                                    ).format(MainActivity.dateTimeFormatter)
-                                }] from ${users[UUID.fromString(jsonObject.getString("user_id"))]}: [SOUND_SIGNAL]")
-                        }
-
-                        "chat" -> {
-                            receivedMessages =
-                                receivedMessages + ("[${
-                                    LocalDateTime.ofInstant(
-                                        Instant.ofEpochSecond(
-                                            jsonObject.getString("timestamp").toLong() / 1000
-                                        ), ZoneId.systemDefault()
-                                    ).format(MainActivity.dateTimeFormatter)
-                                }] from ${users[UUID.fromString(jsonObject.getString("user_id"))]}: ${
-                                    jsonObject.getString(
-                                        "message"
-                                    )
-                                }")
-                        }
-
-                        "join" -> users[UUID.fromString(jsonObject.getString("user_id"))] =
-                            jsonObject.getString("nickname")
-
-                        "nickname_change" -> users[UUID.fromString(jsonObject.getString("user_id"))] =
-                            jsonObject.getString("new_nickname")
-
-                        "user_left" -> users.remove(UUID.fromString(jsonObject.getString("user_id")))
-                        "user_list" -> {
-                            val jsonArray = jsonObject.getJSONArray("users")
-                            for (i in 0 until jsonArray.length()) {
-                                val jsonObject1 = jsonArray.getJSONObject(i)
-                                users[UUID.fromString(jsonObject1.getString("user_id"))] =
-                                    jsonObject1.getString("nickname")
-                            }
-                        }
-                    }
-                }
-                webSocketClient.messages = listOf()
-            }
-
             Text(text = "WebSocket Chat", style = MaterialTheme.typography.headlineMedium)
 
             users.values.sorted().forEach { user ->
@@ -111,11 +51,11 @@ fun WebSocketUI(
                             packet.put("type", "chat")
                             packet.put("timestamp", System.currentTimeMillis())
                             packet.put("message", message)
-                            webSocketClient.send(packet.toString())
+                            service.send(packet.toString())
                             message = ""
                         }
                     },
-                    modifier = Modifier.weight(.5f)
+                    modifier = Modifier.padding(4.dp).weight(.5f)
                 ) {
                     Text("Send message")
                 }
@@ -124,9 +64,9 @@ fun WebSocketUI(
                         val packet = JSONObject()
                         packet.put("type", "sound")
                         packet.put("timestamp", System.currentTimeMillis())
-                        webSocketClient.send(packet.toString())
+                        service.send(packet.toString())
                     },
-                    modifier = Modifier.weight(.5f)
+                    modifier = Modifier.padding(4.dp).weight(.5f)
                 ) {
                     Text("Send signal")
                 }
@@ -142,8 +82,8 @@ fun WebSocketUI(
                     Text("Change nickname")
                 }
                 if (changeNicknameDialog) {
-                    changeNickname(webSocketClient.userName, {
-                        webSocketClient.userName = it
+                    changeNickname(getUsername(context), {
+                        service.userName = it
                         changeNicknameDialog = false
                     }) {
                         changeNicknameDialog = false
@@ -152,10 +92,7 @@ fun WebSocketUI(
             }
 
             Button(
-                onClick = {
-                    webSocketClient.close()
-                    connected.value = false
-                },
+                onClick = stopService,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Disconnect")
@@ -163,8 +100,8 @@ fun WebSocketUI(
 
             Text("Received Messages:")
         }
-        items(receivedMessages.size) { index ->
-            val text = receivedMessages[receivedMessages.size - index - 1]
+        items(messages.size) { index ->
+            val text = messages[messages.size - index - 1]
             SelectionContainer {
                 Text(text = text)
             }

@@ -1,10 +1,14 @@
 package oblitusnumen.beepmobile
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,32 +19,38 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import oblitusnumen.beepmobile.impl.MyWebSocketClient
+import androidx.lifecycle.viewmodel.compose.viewModel
+import oblitusnumen.beepmobile.impl.WebSocketService
 import oblitusnumen.beepmobile.impl.createNotificationChannel
+import oblitusnumen.beepmobile.impl.getUsername
+import oblitusnumen.beepmobile.impl.saveUsername
+import oblitusnumen.beepmobile.ui.BeepViewModel
 import oblitusnumen.beepmobile.ui.WebSocketUI
 import oblitusnumen.beepmobile.ui.theme.BeepMobileTheme
-import java.net.URI
-import java.time.format.DateTimeFormatter
-import java.util.*
 
 
 class MainActivity : ComponentActivity() {
-    private var webSocketClient: MyWebSocketClient? = null
-    private var mediaPlayer: MediaPlayer? = null
+    var webSocketService: WebSocketService? = null
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as? WebSocketService.LocalBinder
+            webSocketService = binder?.getService()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            webSocketService = null
+        }
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (mediaPlayer == null)
-            mediaPlayer = MediaPlayer.create(this, R.raw.beep)
 
         val requestPermissionLauncher =
             registerForActivityResult(
@@ -109,16 +119,14 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                     }
                 ) { innerPadding ->
-                    val connected = remember { mutableStateOf(false) }
+                    val viewModel: BeepViewModel = viewModel()
+                    val connected by viewModel.connected.collectAsState()
                     Box(Modifier.padding(innerPadding)) {
-                        if (connected.value) {
-                            remember {
-//                                webSocketClient!!.init()
-                            }
-                            WebSocketUI(this@MainActivity, mediaPlayer!!, webSocketClient!!, connected)
+                        if (connected) {
+                            WebSocketUI(this@MainActivity, webSocketService!!, this@MainActivity::stopBeepService)
                         } else {
                             Column(Modifier.fillMaxSize().padding(16.dp).align(Alignment.Center)) {
-                                var message by remember { mutableStateOf("User@${UUID.randomUUID()}") }
+                                var message by remember { mutableStateOf(getUsername(this@MainActivity)) }
                                 OutlinedTextField(
                                     value = message,
                                     onValueChange = { message = it },
@@ -128,11 +136,10 @@ class MainActivity : ComponentActivity() {
                                 Button(
                                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(16.dp),
                                     onClick = {
-                                        val serverUrl = "wss://beep.demogram.ru/ws"  // Change to your actual server
-                                        webSocketClient = MyWebSocketClient(URI(serverUrl), message)
-                                        webSocketClient!!.connect()  // onnect WebSocket when the app starts
-                                        connected.value = true
-                                    }) {
+                                        saveUsername(this@MainActivity, message)
+                                        startBeepService()
+                                    }
+                                ) {
                                     Text(text = "Connect")
                                 }
                             }
@@ -143,13 +150,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        webSocketClient?.close()  // Close WebSocket when app is destroyed
-        mediaPlayer?.release()
+    fun startBeepService() {
+        val intent = Intent(this@MainActivity, WebSocketService::class.java)
+        ContextCompat.startForegroundService(this@MainActivity, intent)
+        bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
-    companion object {
-        val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+    fun stopBeepService() {
+        // 1 Unbind if you previously did bindService()
+        try {
+            unbindService(connection)
+        } catch (e: IllegalArgumentException) {
+            // this means the service wasn't bound - optional
+            e.printStackTrace()
+        }
+        // 2 Stop the foreground service
+        val intent = Intent(this@MainActivity, WebSocketService::class.java)
+        stopService(intent)
     }
 }
